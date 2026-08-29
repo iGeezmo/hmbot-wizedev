@@ -1,0 +1,47 @@
+name: Render AI digest mirror
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/ai-digest-entries/**"
+      - "scripts/render_ai_digest.py"
+      - ".github/workflows/render-ai-digest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-ai-digest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: true
+
+      - name: Render accumulated digest
+        run: python3 scripts/render_ai_digest.py
+
+      - name: Validate generated diff
+        run: git diff --check
+
+      - name: Commit generated document
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/ai-digest.md; then
+            echo "Digest is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ai-digest.md
+          git commit -m "docs(ai-digest): render accumulated mirror"
+          git push
