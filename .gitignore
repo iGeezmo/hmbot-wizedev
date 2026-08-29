@@ -5,3 +5,7 @@ __pycache__/
 *.log
 .venv/
 .env
+
+# Парсер дампы
+data/tg_dumps/*.json
+!data/tg_dumps/.gitkeep
