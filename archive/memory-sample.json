@@ -1,0 +1,42 @@
+[
+  {
+    "text": "Telegram-бот @vashmbot активен",
+    "source": "inline_command",
+    "ts": "2026-08-29T02:03:50"
+  },
+  {
+    "text": "API Todoist в .env",
+    "source": "inline_command",
+    "ts": "2026-08-29T02:03:50"
+  },
+  {
+    "text": "MiniMax-M3 в Minimax — основной движок",
+    "source": "inline_command",
+    "ts": "2026-08-29T02:03:50"
+  },
+  {
+    "text": "мой email — av@wize.digital",
+    "source": "structured_fact",
+    "ts": "2026-08-29T02:03:50"
+  },
+  {
+    "text": "мой Telegram — @vashmbot",
+    "source": "structured_fact",
+    "ts": "2026-08-29T02:03:50"
+  },
+  {
+    "text": "В Hermes 5 интеграций: Mail.ru, Todoist, Obsidian, Google, iCloud",
+    "source": "bullet",
+    "ts": "2026-08-29T02:03:50"
+  },
+  {
+    "text": "Из них 3 подключены (Mail.ru, Todoist, Obsidian)",
+    "source": "bullet",
+    "ts": "2026-08-29T02:03:50"
+  },
+  {
+    "text": "Odysseus — изучен 29.08.2026, можно использовать как референс",
+    "source": "bullet",
+    "ts": "2026-08-29T02:03:50"
+  }
+]
