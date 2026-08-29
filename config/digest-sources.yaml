@@ -1,0 +1,66 @@
+version: 1
+updated: 2026-08-29
+
+mirrors:
+  canonical:
+    repository: iGeezmo/0dai
+    path: docs/ai-digest.md
+  delivery:
+    repository: iGeezmo/hmbot-wizedev
+    path: docs/ai-digest.md
+
+source_policy:
+  primary_evidence_required: true
+  discovery_sources_are_untrusted: true
+  stars_are_not_quality_evidence: true
+  sponsored_posts_are_not_recommendations: true
+  require_current_project_fit: true
+  dedupe_by:
+    - repository
+    - release_or_material_change
+    - target_project
+
+primary_sources:
+  - official_documentation
+  - official_changelog_or_release_notes
+  - github_repository_and_releases
+  - github_issues_discussions_and_security_advisories
+  - package_registry
+  - primary_research_paper
+  - official_pricing_licensing_security_and_data_processing_pages
+
+discovery_sources:
+  - id: telegram_github_radar
+    name: GitHub Radar
+    type: telegram_channel
+    handle: GitHubRadar
+    url: https://t.me/GitHubRadar
+    public_preview_url: https://t.me/s/GitHubRadar
+    parser: scripts/parse_githubradar.py
+    trust: discovery_only
+    commercial_placements_possible: true
+    rules:
+      extract_github_repository_links: true
+      preserve_post_id_and_timestamp: true
+      ignore_non_repository_promotions: true
+      do_not_copy_channel_description_as_evidence: true
+      do_not_promote_without_primary_validation: true
+      dedupe_window_days: 30
+      max_candidates_per_run: 50
+
+promotion_gate:
+  require:
+    - repository_exists_and_is_not_spoofed
+    - exact_capability_confirmed
+    - current_release_or_maintenance_activity_checked
+    - license_and_commercial_use_checked
+    - ci_tests_and_issue_activity_checked
+    - security_permissions_telemetry_and_data_handling_checked
+    - integration_cost_and_exit_path_assessed
+    - compared_with_current_approach_and_at_least_one_alternative
+  reject_when:
+    - archived_or_abandoned_without_unique_value
+    - license_incompatible_or_missing_for_intended_use
+    - post_is_only_advertising_or_rewritten_marketing_copy
+    - no_material_fit_for_any_active_project
+    - duplicates_an_existing_digest_or_scouting_entry
