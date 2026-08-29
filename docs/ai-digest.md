@@ -2,7 +2,7 @@
 title: "Ежедневный прикладной ИИ-дайджест"
 type: doc
 created: 2026-08-29
-updated: 2026-08-24
+updated: 2026-08-25
 managed: true
 mirror:
   canonical_repository: "iGeezmo/0dai"
@@ -16,6 +16,83 @@ mirror:
 Новые выпуски хранятся как отдельные файлы в `docs/ai-digest-entries/` и автоматически собираются в этот документ. Полный исторический архив до начала зеркала остаётся в каноническом приватном документе `iGeezmo/0dai/docs/ai-digest.md`.
 
 <!-- DAILY_ENTRIES -->
+
+## 2026-08-25
+
+### Вывод дня
+
+Порог выпуска прошли три сигнала: deprecation inbound MCP surface Codex, general availability enterprise-managed authorization для Figma MCP и появление event-driven completion для batch AI jobs в Vercel AI SDK. Общая тема — перенос orchestration и identity из ad hoc интеграций в явные lifecycle contracts.
+
+### 1. OpenAI депрекейтит `codex mcp-server` в пользу App Server
+
+24 августа OpenAI пометила команду `codex mcp-server` deprecated. Для programmatic integration рекомендуется Codex App Server; для использования Codex из Claude Code — официальный Codex plugin. Это не означает отказ Codex от MCP client functionality: deprecated именно режим, в котором Codex сам выставлялся наружу как MCP server.
+
+**Практическое применение:** найти inbound integrations, завязанные на `codex mcp-server`, и мигрировать их через contract tests на session creation, cancellation, approvals, auth propagation, streaming/event ordering и reconnect recovery. Canonical jobs/receipts следует оставить application-owned.
+
+**Риск и ограничения:** deprecation пока не равна shutdown date. App Server имеет более широкую surface, поэтому механическая замена команды способна незаметно изменить trust boundary.
+
+**Сильный контраргумент:** пользователям `codex exec`, IDE, обычного CLI и Codex как MCP client отдельный migration project не нужен.
+
+**Кому полезно:** agent-platform builders, IDE integrations и orchestration/control-plane teams.
+
+Источник: [Codex changelog](https://developers.openai.com/codex/changelog).
+
+### 2. Enterprise-managed authorization для Figma MCP стала GA
+
+24 августа Figma сообщила, что admins Organization/Enterprise могут централизованно управлять Figma MCP connection к AI agents через identity provider, уменьшая индивидуальный OAuth onboarding и повторные consent prompts. Доступ к конкретным файлам по-прежнему определяется существующими правами пользователя; централизованная аутентификация не должна трактоваться как дополнительная file authorization.
+
+**Практическое применение:** формализовать identity lane `individual_oauth | enterprise_managed`, централизовать provisioning/revocation и сохранять IdP/client/actor provenance в audit receipt.
+
+**Риск и ограничения:** аутентификация не разрешает write operation автоматически. Ошибка IdP/configuration увеличивает correlated blast radius, а первоначальная provider/client matrix ограничена.
+
+**Сильный контраргумент:** для небольшой команды individual OAuth дешевле и менее связан с одним enterprise IdP. EMA оправдана только при реальной стоимости onboarding/offboarding.
+
+**Кому полезно:** enterprise design/platform teams, IAM/AppSec и крупные Figma MCP deployments.
+
+Источник: [Figma release notes — Enterprise-managed authorization for MCP](https://www.figma.com/release-notes/).
+
+### 3. Vercel AI SDK добавил webhook completion для batch generation
+
+25 августа `ai@7.0.79` добавил `webhookUrl` в experimental batch-generation API. Через AI Gateway callback передаётся в async job metadata; direct OpenAI и Anthropic batch providers не обязаны поддерживать эту Gateway-specific опцию и должны сообщать unsupported warning.
+
+**Практическое применение:** перейти от постоянного polling к event-driven pipeline `submit → persist job → release worker → callback → validate → continue` для bulk classification, enrichment, evals и массовой генерации.
+
+**Риск и ограничения:** API experimental, callback — privileged external input. Нужны idempotency, replay protection, state validation, authentication и fallback reconciliation. `job completed` не означает `side effect authorized`.
+
+**Сильный контраргумент:** при небольшом объёме batch jobs polling проще, прозрачнее и provider-neutral. Gateway webhook оправдан только при измеримом orchestration overhead.
+
+**Кому полезно:** marketing automation, analytics pipelines, bulk content/enrichment и eval infrastructure.
+
+Источник: [Vercel AI SDK `ai@7.0.79`](https://github.com/vercel/ai/releases/tag/ai%407.0.79).
+
+## GitHub Radar
+
+### Репозиторий периода: `vercel/ai`
+
+- **Лицензия:** Apache-2.0 для core repository.
+- **Зрелость:** очень активный monorepo с provider, workflow, MCP, telemetry и UI packages; rapid cadence требует exact pinning.
+- **CI/tests:** специализированные workflows для core/provider changes, releases и changesets; provider abstraction всё равно нуждается в application contract tests.
+- **Security model:** disclosure через Vercel security process; SDK не является authorization layer, а Gateway — отдельный hosted data/control plane.
+- **Telemetry/data handling:** direct-provider и Gateway routes имеют разные retention/residency boundaries; provider abstraction не равна data-policy abstraction.
+- **Integration cost:** низкий для basic generation, средний для batch webhook, высокий если Gateway становится canonical routing/job/compliance state.
+- **Reversibility:** высокая при application-owned model/job interface и polling fallback; низкая при зависимости от Gateway-only metadata.
+- **Production-readiness:** 4/5 для pinned core/direct providers; 3/5 для experimental batch webhook до callback canary.
+
+**Validation plan — 60–90 минут:** pin exact versions; submit synthetic batch; persist immutable correlation ID; повторить callback дважды; смоделировать delayed/out-of-order callback и failure; проверить polling recovery; подтвердить expected warning у direct providers; отключить Gateway feature flag.
+
+**Красные флаги:** публичный callback без проверки, callback сам публикует/удаляет, experimental API считается cross-provider stable, Gateway job store — единственная запись, ZDR Gateway автоматически переносится на upstream provider.
+
+Репозиторий: https://github.com/vercel/ai
+
+### Watchlist
+
+- [`openai/codex`](https://github.com/openai/codex) — переход inbound integrations к App Server.
+- [`modelcontextprotocol/modelcontextprotocol`](https://github.com/modelcontextprotocol/modelcontextprotocol) — workload identity и progressive discovery после появления normative SEP/spec.
+- [`pydantic/pydantic-ai`](https://github.com/pydantic/pydantic-ai) — state/tool security и provider compatibility.
+
+### Topic для разведки
+
+**Async AI callbacks как privileged external input:** authentication, replay, idempotency, causal provenance и независимая authorization side effects.
 
 ## 2026-08-24
 
