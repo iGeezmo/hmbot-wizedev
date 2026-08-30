@@ -2,7 +2,7 @@
 title: "Ежедневный прикладной ИИ-дайджест"
 type: doc
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-08-30
 managed: true
 mirror:
   canonical_repository: "iGeezmo/0dai"
@@ -16,6 +16,112 @@ mirror:
 Новые выпуски хранятся как отдельные файлы в `docs/ai-digest-entries/` и автоматически собираются в этот документ. Полный исторический архив до начала зеркала остаётся в каноническом приватном документе `iGeezmo/0dai/docs/ai-digest.md`.
 
 <!-- DAILY_ENTRIES -->
+
+## 2026-08-30
+
+### Вывод дня
+
+Порог выпуска прошли три сигнала. Сегодняшний практический сдвиг — не новый frontier-model, а ужесточение причинной модели агентных систем: результат MCP-инструмента теперь может быть преобразован расширением до попадания в модель, permission state должен инвалидировать старые approvals, а durable execution получает публичный backend-контракт вместо привязки к одному workflow engine. Отдельного свежего model/design/marketing релиза, который по проверенному влиянию превосходил бы эти изменения, не найдено.
+
+### 1. Codex 0.151.0 делает extension layer частью доверенной цепочки MCP и закрывает stale-authorization классы
+
+29 августа OpenAI выпустила Codex CLI `0.151.0`. Наиболее значимое изменение: extensions теперь могут **инспектировать или заменять результат MCP tool call до того, как его увидит модель**. В том же релизе появился конфигурируемый grace period для optional MCP discovery и улучшено объединение repository plugin catalogs. Security/reliability fixes сохраняют restored permission profiles между TUI turns, не позволяют `/cd` ослабить sandbox, делают tool availability и reasoning model-aware при switch/fallback, учитывают nested-subagent token usage в бюджете root goal и не дают stale Guardian classification авторизовать действие после изменения permission state.
+
+**Практическое применение:** audit trail больше не должен записывать только `tool -> result`. Для governed MCP path нужен минимум `raw_result_digest -> transformer identity/version -> model_visible_result_digest`, плюс effective permission/capability snapshot, на котором было принято решение. Если extension изменяет результат, это отдельная privileged provenance boundary. Root-level cost budget также должен агрегировать вложенных subagents, а смена permission state должна инвалидировать ранее вычисленные approval/classification decisions.
+
+**Риск и ограничения:** сама возможность трансформации не означает, что каждая установка её использует. Неправильная реализация receipts может начать хранить сырой чувствительный MCP payload ради аудита и тем самым ухудшить privacy. Codex развивается быстро; `main` уже ушёл вперёд после tagged release, поэтому production contract следует pin-ить на release и проверять black-box fixtures на целевой OS/configuration.
+
+**Сильный контраргумент:** для bounded `codex exec` без extensions, MCP transforms и native nested agents отдельная архитектурная миграция не нужна. Это верно: достаточен targeted canary и capability-specific version floor. Новую provenance schema стоит активировать только когда transform capability реально включена.
+
+**Кому полезно:** agent-platform builders, MCP/plugin developers, AppSec, FinOps и команды с многоагентным Codex runtime.
+
+Источники: [Codex 0.151.0](https://github.com/openai/codex/releases/tag/rust-v0.151.0), [Codex repository](https://github.com/openai/codex).
+
+### 2. Claude Code 2.1.251 закрывает filesystem TOCTOU и переводит model-switch / managed-setting changes в явные control points
+
+28 августа Anthropic выпустила Claude Code `2.1.251`. Релиз исправляет TOCTOU-класс, при котором `Read`/`Write`/`Edit` могли пройти permission check, а затем последовать по заменённой symlink и прочитать или изменить файл вне одобренного пути. Отдельно закрыты plugin path traversal, чтение workflow `scriptPath` до permission check, обход `Read(...)` deny через symlinked Grep/Glob paths и auto-approval некоторых arithmetic shell assignments.
+
+Одновременно появились `PreModelSwitch` и `PostModelSwitch` hooks; resume hooks получают staleness session и оценку re-cache cost. Server-managed настройки, которые ослабляют sandbox, терминируют TLS, меняют proxy или inject credentials, теперь требуют approval. То же относится к чувствительным `ANTHROPIC_CUSTOM_HEADERS` из managed/project settings. Browser actions в Claude in Chrome теперь проходят через Claude Code permission checks. Релиз также добавляет spend-limit и prompt-cache telemetry surfaces.
+
+**Практическое применение:** в agent-fleet regression suite нужен adversarial symlink-swap fixture, а не только статическая проверка пути до tool call. Model switch/fallback стоит считать сменой execution context: hook может зафиксировать effective policy, tool availability, cost tier и причину switch, но server-side authorization всё равно должна выполняться отдельно. Изменения managed settings, затрагивающие credentials/network/sandbox, должны оставлять approval receipt с прежним и новым effective state.
+
+**Риск и ограничения:** Claude Code — proprietary runtime; release notes не заменяют black-box verification. Исправление конкретных path/symlink случаев не превращает локальный agent process в полную isolation boundary. В issue tracker уже появился воспроизводимый UI regression `2.1.251`, поэтому глобальный `latest` без canary остаётся плохой политикой даже когда релиз содержит важные security fixes.
+
+**Сильный контраргумент:** disposable VM/container с short-lived credentials, egress controls и protected remote создаёт более сильную boundary, чем patch-level fixes внутри coding agent. Согласен; `2.1.251` следует считать defense-in-depth/version floor для Claude-host workflows, а не заменой внешней изоляции.
+
+**Кому полезно:** platform engineering, AppSec, Claude Code fleets, self-hosted runners и команды с background/remote agent sessions.
+
+Источники: [Claude Code 2.1.251](https://github.com/anthropics/claude-code/releases/tag/v2.1.251), [Claude Code repository](https://github.com/anthropics/claude-code).
+
+### 3. Pydantic AI 2.36.0 открывает публичный backend API для durable execution
+
+29 августа опубликован `pydantic-ai v2.36.0` (release помечен датой 28 августа). Главное изменение — `@durable_operation` для capabilities и **публичный backend API для сторонних durable execution engines**. Ранее основной путь был теснее связан с first-party/co-maintained integrations; теперь framework явно создаёт extension seam для собственного durable backend. В релизе также появились стабильные `InstructionPart.id`, обязательное explicit имя операции для `@durable_operation`, `clai --mcp-config` с tool-call streaming и async iterables для realtime audio.
+
+**Практическое применение:** Python agent platform может оставить typed agent/capability contract в Pydantic AI, но использовать собственный durable scheduler/queue, не превращая Temporal/Prefect/DBOS в обязательную доменную зависимость. Stable instruction/operation IDs полезны для causal replay, reconciliation и receipts. Правильная граница: framework управляет orchestration adapter, а application-owned ledger хранит idempotency key, side-effect state, retry count и бизнес-истину.
+
+**Риск и ограничения:** `public API` не равно зрелому cross-backend semantic standard. Retry, exactly-once illusion, cancellation, approval resume и crash-after-side-effect остаются обязанностью конкретного backend/application. Framework быстро развивается, а telemetry при включённой instrumentation по умолчанию способна включать prompts, completions, tool arguments/results и binary content — privacy-safe deployment требует явных `include_content=False` / `include_binary_content=False` либо собственного OTel policy.
+
+**Сильный контраргумент:** если приложение уже использует один workflow engine и имеет собственную очередь/state machine, прямой Temporal/DBOS/Celery/Postgres-job adapter проще и более переносим. `@durable_operation` полезен только если Pydantic AI уже является реальным agent-runtime слоем либо публичный backend API заметно сокращает bespoke lifecycle code.
+
+**Кому полезно:** Python agent platforms, background research/analytics, durable HITL workflows и команды с собственным scheduler/runtime.
+
+Источники: [Pydantic AI v2.36.0](https://github.com/pydantic/pydantic-ai/releases/tag/v2.36.0), [Pydantic AI documentation](https://pydantic.dev/docs/ai/), [Logfire / OpenTelemetry controls](https://pydantic.dev/docs/ai/integrations/logfire/).
+
+## GitHub Radar
+
+### Репозиторий периода: `pydantic/pydantic-ai`
+
+**Текущий релиз и активность:** latest stable на момент проверки — `v2.36.0`; после release `main` продолжил активно двигаться, включая durable-exec CI work, Google/Gemini transport fixes и AG-UI corrections. Репозиторий имеет сотни открытых Issues и активный PR поток, поэтому это не maintenance-only проект, но быстрый cadence требует exact pinning и project-level canary.
+
+**Лицензия и коммерческое использование:** core repository лицензирован по MIT; коммерческое использование, модификация и распространение разрешены при сохранении copyright/license notice. Hosted model providers, Logfire и внешние durable engines имеют собственные условия и не наследуют MIT автоматически.
+
+**Документация:** публичная документация покрывает typed agents, tools, MCP, realtime, image generation, embeddings и durable execution. `pydantic-ai-harness` вынесен отдельно, что позволяет не тянуть coding-agent filesystem/shell surface в обычный runtime.
+
+**CI/tests:** репозиторий имеет крупный `ci.yml`, latest-version canary, harness compatibility, provider health и отдельные durable-execution test lanes; свежие commits продолжают улучшать Temporal/durable CI. Это хороший maintenance signal, но собственная suite не доказывает idempotency конкретного application side effect.
+
+**Issue activity:** issue/PR поток большой и живой. Это полезно для discovery edge cases; одиночный issue не является доказанным universal defect без воспроизведения на exact version/provider.
+
+**Security model:** typed arguments/output validation не является authorization или sandbox. Tool function остаётся реальной application capability. Проект использует GitHub Security Advisories; в августе был опубликован advisory по DNS-rebinding для local web UI, что отдельно подчёркивает: developer UI и local agent process нужно считать privileged surface.
+
+**Telemetry/data handling:** Pydantic AI instrumentation основана на OpenTelemetry и может отправляться в Logfire либо другой OTel backend. Content capture при instrumentation по умолчанию включает prompts/completions/tool arguments/results, а binary capture — двоичные payloads; для privacy-sensitive workloads это нужно явно выключать или фильтровать до exporter. Без настроенной instrumentation само наличие core SDK не означает обязательный hosted telemetry backend.
+
+**Install surface:** минимально — `pydantic-ai` или slim/provider-specific installation; durable engines и realtime/providers подключаются extras. Чем меньше extras и capability bundles, тем уже credential/dependency surface.
+
+**Integration cost:** низкий для bounded typed Agent adapter; средний для tools/MCP и одного durable backend; высокий, если `RunState`, framework operation IDs или provider-specific objects становятся доменной моделью приложения.
+
+**Reversibility:** высокая при application-owned state/interfaces и thin adapter; заметно ниже, если Pydantic durable state становится единственной историей side effects/retries.
+
+**Известные ограничения:** быстрый 2.x cadence; provider parity неполна; новая public durable backend seam ещё требует cross-backend production evidence; tool schema validation не ограничивает side effects; local UI и telemetry должны проходить отдельный security/privacy review.
+
+**Production-readiness — собственная оценка:** **4/5** для pinned core agents с узкими tools, application authorization и reviewed telemetry; **3/5** для нового third-party durable backend API до crash/replay/idempotency canary на выбранном engine.
+
+**Validation plan — 90 минут:**
+
+1. Pin `pydantic-ai==2.36.0` в disposable Python 3.12 environment.
+2. Реализовать минимальный in-memory test backend с явно именованной `@durable_operation` и application-owned idempotency key.
+3. Прогнать success, crash-after-side-effect-before-ack, retry и resume; внешний side effect должен фиксироваться один раз.
+4. Проверить, что stable instruction/operation IDs сохраняют causal mapping через resume.
+5. Сравнить semantics с direct Temporal либо простым project-owned queue adapter; framework не должен становиться единственной БД workflow state.
+6. Включить локальный OTLP sink с `include_content=False` и synthetic secret; secret не должен попадать в spans. Без instrumentation не должно появиться неожиданного telemetry egress.
+7. Удалить adapter и подтвердить, что domain records не требуют миграции.
+
+**Красные флаги:** floating `main/latest`; `@durable_operation` ошибочно считается exactly-once гарантией; raw prompts/tool results уходят в telemetry; broad shell/network tools; framework state — единственный audit ledger; local `to_web` используется как публичная production admin surface; provider/extras устанавливаются без необходимости.
+
+Репозиторий: https://github.com/pydantic/pydantic-ai
+
+### Watchlist
+
+- [`openai/codex`](https://github.com/openai/codex) — provenance transformed MCP results, invalidation stale Guardian decisions и root-level subagent budgets.
+- [`anthropics/claude-code`](https://github.com/anthropics/claude-code) — filesystem TOCTOU, managed-settings approvals и model-switch hooks.
+- [`modelcontextprotocol/modelcontextprotocol`](https://github.com/modelcontextprotocol/modelcontextprotocol) — workload identity и progressive discovery; принимать в production только после нормативных SEP/spec, а не по roadmap.
+
+### Topic для разведки
+
+**Causal provenance across transformed tool results and durable resume:** система должна доказуемо отвечать, что вернул tool, кто и как преобразовал результат, какой permission/capability snapshot действовал, был ли side effect уже committed до retry/resume и какой payload фактически увидела модель.
+
+### Discovery note — `@GitHubRadar`
+
+Публичный канал `https://t.me/GitHubRadar` используется только как discovery feed. В сегодняшнем просмотре не найден кандидат, который после primary-source revalidation превосходил бы три сигнала выше или прошёл project-specific promotion gate. Сам факт публикации, stars и рекламное размещение не повышают score.
 
 ## 2026-08-29
 
