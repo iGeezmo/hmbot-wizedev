@@ -21,9 +21,37 @@ mirror:
 
 ### Вывод дня
 
-Порог выпуска прошли три сигнала. Нового stable frontier-model, крупного coding-agent/IDE релиза или design-tool обновления, которое по подтверждённому практическому следствию превосходило бы их, в проверенных первичных источниках не найдено; prerelease Codex и minor provider patches сознательно не включены. Сегодняшняя практическая тема — не «ещё больше AI», а контроль границ: фиксированная экономика модели вместо ожидаемого повышения цены, окончательный cutover старой ChatGPT image surface и новая возможность смешивать несколько identity domains внутри одной plugin-сессии.
+Порог выпуска прошли пять сигналов. Нового stable frontier-model или крупного IDE/coding-agent релиза, который по подтверждённому практическому следствию превосходил бы их, в первичных источниках не найдено; prerelease Codex `0.152.x` и обычные patch/minor updates сознательно не включены. Сегодняшняя тема — смена рабочих границ на стыке месяца: GitHub Spark закрывает workbench, завтра из Copilot уходят сразу несколько model IDs, Claude Sonnet 5 сохраняет более низкую постоянную цену, ChatGPT переводит старый DALL·E workflow на Images, а несколько Google identities теперь могут одновременно участвовать в одном разговоре.
 
-### 1. Claude Sonnet 5 остаётся на $2/$10 за MTok: запланированного повышения 1 сентября не будет
+### 1. GitHub Spark закрывает текущий workbench 31 августа: код нужно экспортировать, а `llm()` уже требует собственного inference provider
+
+**Что изменилось и дата.** GitHub объявила, что с 4 августа Spark на `github.com` не принимает новых пользователей и не позволяет создавать новые apps; существующие пользователи могут пользоваться workbench только до **31 августа 2026 года**, чтобы экспортировать созданные apps. Уже опубликованные Spark apps продолжат работать после retirement. Отдельно GitHub Models, на котором был построен Spark `llm()`, отключён с 30 июля, поэтому `llm()`-вызовы уже не работают и требуют замены собственным inference provider.
+
+**Практическое применение.** Сегодня последний документированный день для `Spark workbench -> ... -> Create repository`. После экспорта следует зафиксировать build/deploy contract в обычном репозитории, найти `llm()` repository-wide search, вынести model access за application-owned adapter, добавить собственные API credentials/billing и проверить опубликованный app без зависимости от Spark editor. Сам deployed URL не следует считать достаточным backup: GitHub прямо рекомендует экспортировать исходный код, если приложение планируется редактировать дальше.
+
+**Риск и ограничения.** Retirement относится именно к текущему GitHub Spark experience на `github.com`; он не означает отключение Copilot, Codespaces или обычных GitHub repositories. Уже deployed apps без `llm()` могут продолжить работать. Для AI apps перенос inference меняет custody API keys, стоимость, rate limits, data processing и failure semantics — это не механическая замена функции.
+
+**Сильный контраргумент.** Если Spark использовался только как disposable prototype builder, а нужный код уже находится в нормальном repository, отдельной migration-программы не требуется. Нужно лишь отрицательно подтвердить отсутствие неэкспортированных apps и `llm()` dependency.
+
+**Кому полезно.** Rapid prototyping, design/product teams, internal-tool builders и владельцы Spark apps.
+
+Источники: [GitHub Changelog — Spark retirement](https://github.blog/changelog/2026-08-04-upcoming-deprecation-of-github-spark-on-github-com/), [GitHub Community announcement](https://github.com/orgs/community/discussions/203602).
+
+### 2. 1 сентября из GitHub Copilot уходят Gemini 3.1 Pro, четыре Claude 4.x модели и Raptor Mini
+
+**Что изменилось и дата.** GitHub назначила на **1 сентября 2026 года** deprecation сразу для `Gemini 3.1 Pro`, `Claude Opus 4.5`, `Claude Opus 4.6`, `Claude Sonnet 4.5`, `Claude Sonnet 4.6` и `Raptor Mini` во всех Copilot experiences — Chat, inline edits, ask/agent modes и code completions. Рекомендованные замены: Gemini 3.6 Flash, Claude Opus 4.7/4.8/5, Claude Sonnet 5 и MAI-Code-1-Flash. Исключение: Claude Sonnet 4.6 остаётся доступным individual Copilot subscribers на annual plans. Enterprise admins могут отдельно потребовать включить replacement model в model policies.
+
+**Практическое применение.** Сегодня стоит проверить managed settings, hardcoded model selectors, reusable prompt/eval baselines, agent profiles и документацию. Перед заменой default model нужен маленький paired regression: качество accepted result, tool behavior, latency, context handling и фактические AI credits/стоимость. Для Enterprise отдельно проверить, что replacement разрешён policy, иначе nominal migration может завершиться отсутствующим model selector.
+
+**Риск и ограничения.** Copilot deprecation не равна retirement тех же model families в API Anthropic/Google или других providers. Auto-selection может скрыть смену модели, но изменить behavior/cost. Исключение для annual subscribers делает глобальный вывод «Sonnet 4.6 исчезает у всех» неверным.
+
+**Сильный контраргумент.** Если команда использует Copilot Auto и не имеет model-specific prompts/evals, ручная миграция может быть лишней. Но для reproducible coding workflows и enterprise policy важно хотя бы проверить effective model после cutoff.
+
+**Кому полезно.** GitHub Copilot administrators, platform engineering, coding-agent users и команды с model-specific evals.
+
+Источник: [GitHub Changelog — September 1 model deprecations](https://github.blog/changelog/2026-07-31-upcoming-august-2026-model-deprecations-in-github-copilot/).
+
+### 3. Claude Sonnet 5 остаётся на $2/$10 за MTok: запланированного повышения 1 сентября не будет
 
 **Что изменилось и дата.** Anthropic 10 августа сделала вводную цену Claude Sonnet 5 постоянной: `$2` за миллион input tokens и `$10` за миллион output tokens. Ранее было объявлено повышение до `$3/$15` с 1 сентября 2026 года; оно отменено. На 31 августа это перестаёт быть временной скидкой и становится устойчивым входом для model-routing и unit-economics. Anthropic отдельно предупреждает, что новый tokenizer создаёт примерно на 30% больше токенов для того же текста, поэтому реальная экономия относительно Sonnet 4.6 не равна простому отношению `$2/$10` к `$3/$15`.
 
@@ -37,13 +65,13 @@ mirror:
 
 Источники: [Claude Platform release notes](https://platform.claude.com/docs/en/release-notes/overview), [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing), [What's new in Claude Sonnet 5](https://platform.claude.com/docs/en/docs/about-claude/models/whats-new-sonnet-5).
 
-### 2. Официальный DALL·E GPT в ChatGPT отключён 30 августа; рабочие image workflows нужно переводить на ChatGPT Images
+### 4. Для официального DALL·E GPT в ChatGPT наступила объявленная дата retirement; новые SOP нужно строить вокруг ChatGPT Images
 
-**Что изменилось и дата.** OpenAI объявила и 30 августа 2026 года выполнила retirement официального `DALL·E GPT` внутри ChatGPT. Для создания и редактирования изображений OpenAI направляет пользователей в ChatGPT Images. Пользовательские GPT с включённой capability Image Generation этим retirement не затронуты.
+**Что изменилось и дата.** OpenAI заранее указала **30 августа 2026 года** как дату retirement официального `DALL·E GPT` внутри ChatGPT и направляет пользователей в ChatGPT Images. Пользовательские GPT с включённой capability Image Generation этим изменением не затронуты. На 31 августа дата cutoff уже прошла, но текущая справка всё ещё местами сформулирована в будущем времени и содержит старую строку о доступе к DALL·E GPT, поэтому я не выдаю отсутствие карточки во всех аккаунтах/регионах за независимо подтверждённый факт.
 
-**Практическое применение.** Для дизайн- и marketing-SOP, которые буквально ссылаются на «открой DALL·E GPT», заменить entry point, сохранить необходимые старые artifacts и перепроверить recurring creative workflows: prompt templates, aspect ratios, text rendering, brand-color consistency, edit/inpaint behavior, export dimensions и human review. Внутренние инструкции лучше описывать capability (`image generation/editing`), а не привязывать к конкретной GPT-карточке.
+**Практическое применение.** Для дизайн- и marketing-SOP, которые буквально ссылаются на «открой DALL·E GPT», заменить entry point, сохранить нужные старые artifacts и перепроверить recurring creative workflows: prompt templates, aspect ratios, text rendering, brand-color consistency, edit/inpaint behavior, export dimensions и human review. Инструкции лучше описывать capability (`image generation/editing`), а не привязывать к конкретной GPT-карточке.
 
-**Риск и ограничения.** Это retirement **ChatGPT surface**, а не доказательство отключения DALL·E API/model endpoints. Нельзя автоматически переносить этот вывод на API integrations. ChatGPT Images также может давать другое визуальное поведение, поэтому миграция интерфейса не означает output parity.
+**Риск и ограничения.** Это retirement **ChatGPT surface**, а не доказательство отключения DALL·E API/model endpoints. Нельзя автоматически переносить вывод на API integrations. ChatGPT Images может давать другое визуальное поведение, поэтому смена интерфейса не означает output parity.
 
 **Сильный контраргумент.** Если команда уже использует ChatGPT Images, API или собственный GPT с Image Generation, operational change почти нулевой. Сигнал важен только там, где DALL·E GPT был закреплён в SOP, обучающих материалах, bookmarks или production-like human workflow.
 
@@ -51,7 +79,7 @@ mirror:
 
 Источники: [ChatGPT release notes](https://help.openai.com/en/articles/6825453-chatgpt-release-notes), [Images in ChatGPT](https://help.openai.com/en/articles/11084440-images-in-chatgpt).
 
-### 3. ChatGPT теперь подключает несколько Google-аккаунтов одновременно: удобнее cross-account work, но identity provenance становится обязательным
+### 5. ChatGPT теперь подключает несколько Google-аккаунтов одновременно: удобнее cross-account work, но identity provenance становится обязательным
 
 **Что изменилось и дата.** 28 августа OpenAI добавила multiple connected accounts для Gmail, Google Calendar и Google Contacts plugins. Поддерживаемые Plus, Pro, Business и Enterprise пользователи могут подключить, например, личный и рабочий Google-аккаунты и использовать их в одном разговоре. Provider authorization по-прежнему не расширяет исходные права Google account и не отменяет workspace restrictions.
 
@@ -69,7 +97,7 @@ mirror:
 
 ### Репозиторий периода: `plausible/analytics`
 
-Кандидат был обнаружен через публичный `@GitHubRadar`, но Telegram использован только для discovery. Все выводы ниже перепроверены по репозиторию и официальной документации Plausible.
+`@GitHubRadar` был просмотрен как discovery-feed, включая коммерческие размещения; сегодняшнее продвижение Plausible не опирается на текст Telegram-постов. Все выводы ниже перепроверены по самому репозиторию и официальной документации Plausible.
 
 **Назначение и текущий статус.** `plausible/analytics` — активно поддерживаемая privacy-first web analytics платформа. Основное приложение Plausible Community Edition распространяется под **AGPL-3.0+**; browser tracker отдельно имеет MIT-лицензию. Managed Cloud и self-hosted CE — существенно разные продукты: Cloud развивается непрерывно, а CE выпускается как long-term release примерно дважды в год и не содержит части premium-функций.
 
@@ -85,11 +113,11 @@ mirror:
 
 **Pricing/economics.** На текущей публичной pricing page при до 10k monthly pageviews указаны Starter `$9/mo`, Growth `$14/mo`, Business `$19/mo`; Business добавляет custom properties, Stats API, ecommerce revenue attribution, funnels/user journeys и consolidated view. Usage считается по pageviews + custom events. Enterprise добавляет raw event exports и другие возможности. Цены являются текущими публичными vendor prices, не контрактным предложением.
 
-**Issue/maintenance surface.** Репозиторий активен, десятки открытых issues и регулярные commits. Это лучше dormant OSS, но Cloud/CE feature parity намеренно отсутствует: marketing funnels, revenue goals, SSO и Sites API относятся к premium Cloud, поэтому self-host CE нельзя считать бесплатной эквивалентной заменой Cloud.
+**Issue/maintenance surface.** Репозиторий активен и получает регулярные commits. Это лучше dormant OSS, но Cloud/CE feature parity намеренно отсутствует: marketing funnels, revenue goals, SSO и Sites API относятся к premium Cloud, поэтому self-host CE нельзя считать бесплатной эквивалентной заменой Cloud.
 
 **Integration cost.** Низкий для Cloud event adapter; средний для полноценных funnels/custom properties и historical comparison; высокий для CE, поскольку появляется отдельный Elixir/Postgres/ClickHouse production stack.
 
-**Reversibility.** Хорошая при application-owned event schema: агрегированные stats экспортируются через CSV/Stats API, Enterprise поддерживает scheduled raw event exports; self-host даёт прямой доступ к ClickHouse. Lock-in повышается, если бизнес-метрики определяются только внутри Plausible UI без репозитория с event taxonomy.
+**Reversibility.** Хорошая при application-owned event schema: агрегированные stats экспортируются через CSV/Stats API; self-host даёт прямой доступ к ClickHouse. Lock-in повышается, если бизнес-метрики определяются только внутри Plausible UI без репозитория с event taxonomy.
 
 **Known limitations.** Privacy-friendly не означает «юридическая квалификация автоматически решена»; именно владелец сайта отвечает за lawful basis/notices/safeguards. CE lagging release cadence и AGPL требуют отдельного review. Unique-visitor метод намеренно daily-scoped и не предназначен для долгоживущей user-level product analytics.
 
