@@ -2,7 +2,7 @@
 title: "Ежедневный прикладной ИИ-дайджест"
 type: doc
 created: 2026-08-29
-updated: 2026-08-30
+updated: 2026-08-31
 managed: true
 mirror:
   canonical_repository: "iGeezmo/0dai"
@@ -16,6 +16,110 @@ mirror:
 Новые выпуски хранятся как отдельные файлы в `docs/ai-digest-entries/` и автоматически собираются в этот документ. Полный исторический архив до начала зеркала остаётся в каноническом приватном документе `iGeezmo/0dai/docs/ai-digest.md`.
 
 <!-- DAILY_ENTRIES -->
+
+## 2026-08-31
+
+### Вывод дня
+
+Порог выпуска прошли три сигнала. Нового stable frontier-model, крупного coding-agent/IDE релиза или design-tool обновления, которое по подтверждённому практическому следствию превосходило бы их, в проверенных первичных источниках не найдено; prerelease Codex и minor provider patches сознательно не включены. Сегодняшняя практическая тема — не «ещё больше AI», а контроль границ: фиксированная экономика модели вместо ожидаемого повышения цены, окончательный cutover старой ChatGPT image surface и новая возможность смешивать несколько identity domains внутри одной plugin-сессии.
+
+### 1. Claude Sonnet 5 остаётся на $2/$10 за MTok: запланированного повышения 1 сентября не будет
+
+**Что изменилось и дата.** Anthropic 10 августа сделала вводную цену Claude Sonnet 5 постоянной: `$2` за миллион input tokens и `$10` за миллион output tokens. Ранее было объявлено повышение до `$3/$15` с 1 сентября 2026 года; оно отменено. На 31 августа это перестаёт быть временной скидкой и становится устойчивым входом для model-routing и unit-economics. Anthropic отдельно предупреждает, что новый tokenizer создаёт примерно на 30% больше токенов для того же текста, поэтому реальная экономия относительно Sonnet 4.6 не равна простому отношению `$2/$10` к `$3/$15`.
+
+**Практическое применение.** Пересчитать routing thresholds и budget envelopes для long-context coding/research/marketing-analysis задач по фактическим billed tokens, а не по старому ожиданию сентябрьской цены. Если Sonnet 5 сравнивается с Sonnet 4.6, GPT-5.6 или другими моделями, benchmark должен учитывать total accepted-outcome cost: input/output/cache tokens, retries, human correction и latency. Старые FinOps alerts, в которых с 1 сентября заранее заложено `$3/$15`, стоит исправить сейчас, чтобы не завышать forecast.
+
+**Риск и ограничения.** Это list price Claude Platform; AWS/partner pricing и enterprise agreements могут отличаться. Новый tokenizer меняет объём billable tokens. Более низкая цена не делает Sonnet 5 автоматическим default: migration semantics также отличаются — adaptive thinking включён по умолчанию, manual extended thinking удалён, а нестандартные `temperature/top_p/top_k` возвращают 400.
+
+**Сильный контраргумент.** Если основной расход определяется не token price, а latency, retries, tool calls или стоимостью человеческой проверки, снижение list price может почти не изменить unit economics. Поэтому правильное действие — обновить cost model, а не автоматически переключить весь трафик.
+
+**Кому полезно.** Agent platforms, coding/research pipelines, FinOps, маркетинговая и продуктовая аналитика с длинным контекстом.
+
+Источники: [Claude Platform release notes](https://platform.claude.com/docs/en/release-notes/overview), [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing), [What's new in Claude Sonnet 5](https://platform.claude.com/docs/en/docs/about-claude/models/whats-new-sonnet-5).
+
+### 2. Официальный DALL·E GPT в ChatGPT отключён 30 августа; рабочие image workflows нужно переводить на ChatGPT Images
+
+**Что изменилось и дата.** OpenAI объявила и 30 августа 2026 года выполнила retirement официального `DALL·E GPT` внутри ChatGPT. Для создания и редактирования изображений OpenAI направляет пользователей в ChatGPT Images. Пользовательские GPT с включённой capability Image Generation этим retirement не затронуты.
+
+**Практическое применение.** Для дизайн- и marketing-SOP, которые буквально ссылаются на «открой DALL·E GPT», заменить entry point, сохранить необходимые старые artifacts и перепроверить recurring creative workflows: prompt templates, aspect ratios, text rendering, brand-color consistency, edit/inpaint behavior, export dimensions и human review. Внутренние инструкции лучше описывать capability (`image generation/editing`), а не привязывать к конкретной GPT-карточке.
+
+**Риск и ограничения.** Это retirement **ChatGPT surface**, а не доказательство отключения DALL·E API/model endpoints. Нельзя автоматически переносить этот вывод на API integrations. ChatGPT Images также может давать другое визуальное поведение, поэтому миграция интерфейса не означает output parity.
+
+**Сильный контраргумент.** Если команда уже использует ChatGPT Images, API или собственный GPT с Image Generation, operational change почти нулевой. Сигнал важен только там, где DALL·E GPT был закреплён в SOP, обучающих материалах, bookmarks или production-like human workflow.
+
+**Кому полезно.** Дизайн, performance/content marketing, social production, команды с повторяемыми creative SOP.
+
+Источники: [ChatGPT release notes](https://help.openai.com/en/articles/6825453-chatgpt-release-notes), [Images in ChatGPT](https://help.openai.com/en/articles/11084440-images-in-chatgpt).
+
+### 3. ChatGPT теперь подключает несколько Google-аккаунтов одновременно: удобнее cross-account work, но identity provenance становится обязательным
+
+**Что изменилось и дата.** 28 августа OpenAI добавила multiple connected accounts для Gmail, Google Calendar и Google Contacts plugins. Поддерживаемые Plus, Pro, Business и Enterprise пользователи могут подключить, например, личный и рабочий Google-аккаунты и использовать их в одном разговоре. Provider authorization по-прежнему не расширяет исходные права Google account и не отменяет workspace restrictions.
+
+**Практическое применение.** Для executive/marketing/analytics operations можно в одном workflow сопоставлять несколько календарей или искать информацию в нескольких inbox без ручного переключения identity. Но для любой автоматизации результат должен хранить provenance: `provider`, `connected_account`, source object ID и effective action permission. Если из нескольких inbox/calendar получается рекомендация или действие, downstream system должен понимать, из какого identity domain пришёл каждый факт.
+
+**Риск и ограничения.** Главное новое рисковое место — не OAuth как таковой, а cross-domain context mixing. Личная переписка может оказаться рядом с рабочим контекстом; Memory и conversation context способны увеличить срок жизни производных данных. Disconnect останавливает будущий доступ, но не автоматически удаляет существующие chats, saved files или memories. Для Google apps нужно отдельно проверять запрашиваемые OAuth scopes и workspace/admin controls.
+
+**Сильный контраргумент.** Для регулируемых сред, клиентских аккаунтов или строгого разделения ролей две отдельные сессии/workspaces безопаснее и проще аудируются. Multiple-account mode следует включать там, где стоимость постоянного переключения действительно велика и provenance можно сохранить, а не как новый default.
+
+**Кому полезно.** Маркетинговые и аналитические команды, founders/executives, account managers, operations и research workflows с несколькими Google identities.
+
+Источники: [ChatGPT release notes](https://help.openai.com/en/articles/6825453-chatgpt-release-notes), [Connecting and managing app accounts](https://help.openai.com/en/articles/20001494-connecting-and-managing-app-accounts-in-chatgpt), [Google app data controls](https://help.openai.com/en/articles/10408842-google-app-data-controls-faq).
+
+## GitHub Radar
+
+### Репозиторий периода: `plausible/analytics`
+
+Кандидат был обнаружен через публичный `@GitHubRadar`, но Telegram использован только для discovery. Все выводы ниже перепроверены по репозиторию и официальной документации Plausible.
+
+**Назначение и текущий статус.** `plausible/analytics` — активно поддерживаемая privacy-first web analytics платформа. Основное приложение Plausible Community Edition распространяется под **AGPL-3.0+**; browser tracker отдельно имеет MIT-лицензию. Managed Cloud и self-hosted CE — существенно разные продукты: Cloud развивается непрерывно, а CE выпускается как long-term release примерно дважды в год и не содержит части premium-функций.
+
+**Release/commits.** Последний опубликованный CE release — `v3.2.1` от 15 мая 2026 года. Это security-only release, который устранил `CVE-2026-8467 / GHSA-55hg-8qxv-qj4p`: в предыдущих `v3.0–v3.2` публично доступный `/storybook` при определённых условиях позволял remote code execution от имени системного пользователя приложения; `v3.2.1` полностью удалил endpoint. `master` при этом активно развивается: в конце августа идут продуктовые и test fixes, включая переработку funnel UI и исправления flaky event/session tests.
+
+**Документация и CI/tests.** Репозиторий содержит Elixir и Node test workflows, image builds, migration validation, Terraform E2E и tracker-specific checks. Security policy явно говорит, что security fixes добавляются только в latest major.minor и не backportятся. Для production self-host это означает: pin reviewed current image/version и иметь собственный upgrade cadence; плавающий `latest` удобен поставщику, но хуже для воспроизводимого deployment.
+
+**Security model.** Cloud и CE не являются одинаковым security boundary. В Cloud инфраструктурой, backup и security занимается Plausible; CE требует собственной эксплуатации PostgreSQL/ClickHouse, reverse proxy, patching, backups и incident response. Недавний RCE в старых CE versions — конкретное доказательство того, что self-hosting не следует выбирать только ради слова «privacy».
+
+**Data handling / telemetry.** По данным Plausible, hosted service не использует cookies, localStorage или persistent cross-site identifiers. Для подсчёта daily unique visitor входящие IP и User-Agent используются в `hash(daily_salt + domain + IP + UA)`; raw IP/UA не сохраняются, salt удаляется каждые 24 часа. Vendor также заявляет, что visitor data Cloud обрабатываются только в ЕС на европейской инфраструктуре. Это vendor claims и DPA/data-policy evidence, а не независимый аудит сегодняшнего выпуска. Для self-host данные находятся в выбранной собственной инфраструктуре.
+
+**Install surface.** Самый лёгкий путь — Cloud tracker или Events API. CE заметно тяжелее: application + PostgreSQL + ClickHouse и полный operational ownership. Для интеграции в существующий продукт выгоднее держать provider adapter и event schema в приложении, а Plausible использовать как сменяемый sink/dashboard.
+
+**Pricing/economics.** На текущей публичной pricing page при до 10k monthly pageviews указаны Starter `$9/mo`, Growth `$14/mo`, Business `$19/mo`; Business добавляет custom properties, Stats API, ecommerce revenue attribution, funnels/user journeys и consolidated view. Usage считается по pageviews + custom events. Enterprise добавляет raw event exports и другие возможности. Цены являются текущими публичными vendor prices, не контрактным предложением.
+
+**Issue/maintenance surface.** Репозиторий активен, десятки открытых issues и регулярные commits. Это лучше dormant OSS, но Cloud/CE feature parity намеренно отсутствует: marketing funnels, revenue goals, SSO и Sites API относятся к premium Cloud, поэтому self-host CE нельзя считать бесплатной эквивалентной заменой Cloud.
+
+**Integration cost.** Низкий для Cloud event adapter; средний для полноценных funnels/custom properties и historical comparison; высокий для CE, поскольку появляется отдельный Elixir/Postgres/ClickHouse production stack.
+
+**Reversibility.** Хорошая при application-owned event schema: агрегированные stats экспортируются через CSV/Stats API, Enterprise поддерживает scheduled raw event exports; self-host даёт прямой доступ к ClickHouse. Lock-in повышается, если бизнес-метрики определяются только внутри Plausible UI без репозитория с event taxonomy.
+
+**Known limitations.** Privacy-friendly не означает «юридическая квалификация автоматически решена»; именно владелец сайта отвечает за lawful basis/notices/safeguards. CE lagging release cadence и AGPL требуют отдельного review. Unique-visitor метод намеренно daily-scoped и не предназначен для долгоживущей user-level product analytics.
+
+**Production-readiness — собственная оценка:** **4/5 для Managed Cloud как сменяемого privacy-oriented analytics sink; 3/5 для pinned CE `>=3.2.1` при зрелой ops-команде; 1/5 для старых CE `v3.0–v3.2` с доступным `/storybook`.**
+
+**Validation plan — 90 минут:**
+
+1. Создать trial site без production credentials и с synthetic traffic.
+2. Отправить allowlisted `page_view`, CTA и conversion events без email, brief text, user ID и precise location.
+3. Проверить network/storage: отсутствие cookies/localStorage и состав отправляемых properties.
+4. Построить один funnel и сравнить counts с существующим event sink на небольшом shadow sample.
+5. Отключить Plausible endpoint и подтвердить, что сайт и lead flow продолжают работать non-blocking.
+6. Экспортировать агрегированные данные и удалить test site, подтверждая exit path.
+7. Если рассматривается CE, отдельно развернуть exact `v3.2.1+`, проверить отсутствие `/storybook`, backup/restore и upgrade procedure; не использовать старые `v3` tags.
+
+**Красные флаги:** CE ниже `v3.2.1`; `latest` без reviewed digest/pin; отправка email/CRM brief/user IDs в custom properties; отказ от собственного event taxonomy; предположение «cookie-free = compliance решена»; выбор CE ради экономии без ClickHouse/Postgres/backup/patching ownership; raw analytics становится единственным источником business truth.
+
+Репозиторий: https://github.com/plausible/analytics
+
+Первичные источники: [README](https://github.com/plausible/analytics/blob/master/README.md), [v3.2.1 security release](https://github.com/plausible/analytics/releases/tag/v3.2.1), [Security policy](https://github.com/plausible/analytics/blob/master/SECURITY.md), [Data policy](https://plausible.io/data-policy), [Pricing](https://plausible.io/#pricing), [Export](https://plausible.io/docs/export-stats).
+
+### Watchlist
+
+- [`openai/codex`](https://github.com/openai/codex) — следующий stable после `0.151.0`; prerelease `0.152.x` не продвигается до подтверждённого stable capability delta.
+- [`modelcontextprotocol/modelcontextprotocol`](https://github.com/modelcontextprotocol/modelcontextprotocol) — workload identity/progressive discovery только после нормативного spec/SEP и cross-client conformance evidence.
+- [`plausible/community-edition`](https://github.com/plausible/community-edition) — следить за следующим CE LTR, security floor и разрывом возможностей Cloud/CE, если появится реальная self-host requirement.
+
+### Topic для разведки
+
+**Identity provenance across AI-connected apps and analytics sinks.** Когда один agent conversation одновременно использует несколько Google identities, внешние tools и downstream analytics, каждое полученное утверждение и каждое действие должны иметь source account, permission snapshot и data-class provenance. Удобство объединённого контекста не должно превращаться в неявное объединение trust domains.
 
 ## 2026-08-30
 
