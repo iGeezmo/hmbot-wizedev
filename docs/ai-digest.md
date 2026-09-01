@@ -2,7 +2,7 @@
 title: "Ежедневный прикладной ИИ-дайджест"
 type: doc
 created: 2026-08-29
-updated: 2026-08-31
+updated: 2026-09-01
 managed: true
 mirror:
   canonical_repository: "iGeezmo/0dai"
@@ -16,6 +16,100 @@ mirror:
 Новые выпуски хранятся как отдельные файлы в `docs/ai-digest-entries/` и автоматически собираются в этот документ. Полный исторический архив до начала зеркала остаётся в каноническом приватном документе `iGeezmo/0dai/docs/ai-digest.md`.
 
 <!-- DAILY_ENTRIES -->
+
+## 2026-09-01
+
+### Вывод дня
+
+Порог выпуска прошли три сигнала. Нового frontier-model, design-tool или marketing-AI релиза, который по подтверждённому практическому влиянию превосходил бы их, в первичных источниках не найдено. Главная тема дня — **bounded state in long-running agents**: Codex добавил per-tool ограничения model-visible MCP output и укрепил сохранение approval evidence через compaction; AI Gateway получил identity-scoped spend circuit breakers; Pydantic AI закрыл конкретный false-negative класс eval queries и одновременно уточнил lifecycle durable execution.
+
+### 1. Codex 0.152.0 добавляет per-tool MCP output budgets и сохраняет approval evidence через compaction
+
+**Что изменилось и дата.** OpenAI выпустила Codex CLI `0.152.0` **1 сентября 2026 года**. Для отдельных MCP tools теперь можно задать `output_token_limit`; релиз отдельно заявляет, что truncation применяется согласованно и после resume session. В той же версии automatic approval reviews сохраняют пользовательские инструкции, ответы и действующие authorization decisions через history compaction; resumed threads восстанавливают сохранённый working directory, а metadata updates не должны терять filesystem permissions. Для cloud tasks backend URL теперь проверяется как недоверенный input, redirects отключаются, чтобы не пересылать сохранённые credentials на другой адрес.
+
+**Практическое применение.** В MCP-heavy агенте можно задавать бюджет model-visible output по tool, а не только общий context budget. Например, search/list tools получают ограниченный результат с явным `truncated=true`, тогда как короткие authorization/status tools остаются без агрессивного усечения. Для governed runtime полезен контракт `configured_limit + raw_result_digest/size + delivered_size + truncation_state`, не сохраняя сырой чувствительный payload. Отдельный regression должен проверять `long result -> truncate -> resume -> тот же effective limit` и `approval -> forced compaction -> resume` без потери provenance решения.
+
+**Риск и ограничения.** Truncation — не privacy filter и не authorization. Он способен скрыть отрицательный сигнал, последний элемент списка или часть stack trace и тем самым изменить решение модели. Для security-sensitive tools нужен структурированный summary/status вне усечённого текстового хвоста либо application-side normalization. Сохранение Codex/Guardian authorization через compaction также не делает внутреннее состояние Codex каноническим источником полномочий приложения.
+
+**Сильный контраргумент.** Provider-neutral MCP gateway или application adapter может ограничивать output одинаково для Codex, Claude и других executors и тем самым уменьшить vendor-specific policy. Это более чистая архитектура. Codex `output_token_limit` лучше использовать как defense-in-depth/generated adapter от единого project policy, а не как новый источник истины.
+
+**Кому полезно.** Agent-platform builders, MCP fleets, coding-agent governance, AppSec и FinOps/context-engineering команды.
+
+Источники: [Codex 0.152.0](https://github.com/openai/codex/releases/tag/rust-v0.152.0), [Codex repository](https://github.com/openai/codex).
+
+### 2. Vercel AI Gateway получил per-user dollar budgets поверх key/project/team limits
+
+**Что изменилось и дата.** **31 августа 2026 года** Vercel добавила per-user budgets в AI Gateway. Default budget применяется отдельно к каждому члену команды, custom budget переопределяет его для конкретного пользователя. Spend суммируется по API keys, атрибутированным пользователю, и app tokens; после достижения лимита новые Gateway requests отклоняются до reset или повышения budget. Reset может быть daily, weekly, monthly или disabled, а alerts доступны на 50%, 75% и 100%. User budget не заменяет API-key/project/team budgets: request должен укладываться во все применимые лимиты.
+
+Важное исключение: **BYOK spend не учитывается в per-user budget**. Ключи, созданные до выпуска функции, Vercel оставила атрибутированными team для backward compatibility; production/shared key следует явно относить к team, иначе расход может ошибочно лечь на создателя. CLI-управление user budgets требует Vercel CLI `>=59.6.2`.
+
+**Практическое применение.** Для coding agents, research jobs и других unattended workloads появляется provider-side identity-scoped circuit breaker без схемы «один gateway project на каждого сотрудника». Практичный layered design: `per-run application budget -> user budget -> project/app budget -> team budget`. Shared production workloads должны иметь отдельную service/team attribution, а не использовать человеческий user budget.
+
+**Риск и ограничения.** Финансовый cap не ограничивает capability blast radius: дешёвый destructive call остаётся разрушительным. BYOK способен полностью обойти этот budget layer, а неправильная ownership attribution ключа либо заблокирует не того пользователя, либо исключит расход из ожидаемого лимита. Hard rejection после лимита также является availability event и должен иметь понятный fallback/UX.
+
+**Сильный контраргумент.** Provider-neutral ledger и quotas в собственном control plane лучше работают в multi-cloud и не зависят от Vercel identity model. Верно; Gateway budget рационально использовать как последний server-side предохранитель, а не единственный FinOps contract.
+
+**Кому полезно.** Platform engineering, AI FinOps, команды с AI Gateway, coding-agent fleets и SaaS с несколькими человеческими/служебными AI identities.
+
+Источник: [Vercel — Set per-user budgets on AI Gateway](https://vercel.com/changelog/set-per-user-budgets-on-ai-gateway).
+
+### 3. Pydantic AI 2.37.0 закрывает false-negative в `SpanQuery` и уточняет durable-operation lifecycle
+
+**Что изменилось и дата.** Pydantic AI `v2.37.0`, опубликованный **1 сентября 2026 года** и маркированный релизом за 31 августа, исправляет `SpanQuery`: при pruning теперь сохраняются **все conditions**. Это закрывает конкретный false-negative класс, который ранее делал небезопасным использование определённых pruned span queries как единственного blocking eval/release gate. Релиз также меняет durable execution lifecycle: context-managed models, восстановленные внутри durable operations, корректно управляются как context resources; DBOS теперь отвергает per-run `capabilities=` по аналогии с Temporal; Prefect tool discovery journaled внутри tasks; unmanaged models больше не перестраиваются внутри durable capability operations.
+
+**Практическое применение.** Если `pydantic_evals SpanQuery` используется в CI или quality/security gates, стоит поднять pinned canary до `2.37.0` и повторно прогнать известный fixture с несколькими ancestor/descendant conditions и pruning. Только после воспроизводимого исправления gate можно снова считать блокирующим. Командам, тестирующим новый public durable-backend API из `2.36`, следует повторить crash/resume/provider-lifecycle fixtures: исправления меняют ownership/lifetime model objects внутри durable steps.
+
+**Риск и ограничения.** Исправление одного pruning bug не доказывает логическую полноту всех eval queries. Release/security decision не должен зависеть от одного matcher без known-positive/known-negative fixtures. Durable fixes также не дают exactly-once гарантию внешних side effects: application idempotency и canonical ledger остаются необходимыми.
+
+**Сильный контраргумент.** Если проект не использует `SpanQuery` pruning и не подключает Pydantic durable backends, срочности обновления почти нет. Это targeted correctness release, а не основание мигрировать существующий agent stack на Pydantic AI.
+
+**Кому полезно.** Python agent platforms, evaluation/QA pipelines, durable HITL systems и teams, использующие Pydantic AI как runtime.
+
+Источники: [Pydantic AI v2.37.0](https://github.com/pydantic/pydantic-ai/releases/tag/v2.37.0), [fix PR #7499](https://github.com/pydantic/pydantic-ai/pull/7499), [Pydantic AI repository](https://github.com/pydantic/pydantic-ai).
+
+## GitHub Radar
+
+### Репозиторий периода: `dubinc/dub`
+
+`@GitHubRadar` использован только для discovery. Сам канал прямо сообщает о платных размещениях, поэтому факт публикации, реакции и просмотры не являются evidence. Dub ниже проверен независимо по самому репозиторию, security policy и текущим vendor pages.
+
+**Назначение и текущая активность.** Dub — link-attribution платформа для short links, conversion tracking и affiliate programs. Основной репозиторий активно меняется: 1 сентября в `main` продолжались merge/fix commits, включая Redis failover path и UI fixes. Tagged GitHub Releases отсутствуют, поэтому self-hosting по плавающему `main` не даёт воспроизводимого release contract; для пилота нужен exact commit pin.
+
+**Лицензия и коммерческое использование.** Проект open-core: core лицензирован по **AGPL-3.0**, а Enterprise Edition (`/ee`) имеет отдельную commercial license. Это не permissive MIT/Apache dependency. Коммерческое использование AGPL core возможно при соблюдении условий AGPL; enterprise-функции нельзя автоматически считать частью свободной лицензии.
+
+**Документация и install surface.** README описывает Next.js/TypeScript/Prisma stack и зависимости от Upstash, Tinybird, PlanetScale, NextAuth/BoxyHQ, Stripe, Resend и Vercel; есть отдельный self-hosting guide. Для managed продукта текущая pricing surface включает conversion tracking, event webhooks, API/SDKs, retention tiers и, на partner plans, REST API + MCP Server. Self-host deployment поэтому нельзя считать «одним контейнером без внешней инфраструктуры» без отдельной проверки фактической конфигурации storage/analytics/queues.
+
+**CI/tests и maintenance.** В репозитории есть browser/E2E lanes (`playwright.yaml`, `e2e.yaml`), formatting и deploy workflows. Текущий issue/PR поток активный; на 1 сентября открыты изменения по background jobs, tracking configuration и security review automation. Это сильный maintenance signal, но отсутствие tagged releases повышает стоимость reproducibility и rollback для self-host.
+
+**Security model.** `SECURITY.md` заявляет поддержку security updates для всех версий и private reporting на `security@dub.co` с обещанием acknowledgement в течение 48 часов. При этом attribution platform обрабатывает redirect/conversion/partner data, поэтому application-side consent, data minimization, webhook verification и payout/idempotency остаются отдельными boundaries.
+
+**Telemetry/data handling.** Hosted privacy policy прямо описывает collection/processing personal and usage data и использование service providers. Публичная pricing page задаёт retention как product property: например, Links Business — 3 года, Advanced — 5 лет, Enterprise — unlimited. Поэтому Dub Cloud нельзя трактовать как «privacy-neutral sink». Для self-host custody зависит от выбранной инфраструктуры и конфигурации; наличие self-host option само по себе не устраняет внешние subprocessors.
+
+**Economics.** На текущей публичной pricing page Dub Partners Business стоит `$90/month`, Advanced `$300/month`, Enterprise — custom; Links/analytics limits и retention различаются по tier. Это vendor list pricing, не индивидуальное предложение. Для простой link analytics задачи продукт может оказаться функционально и экономически тяжелее Plausible/UTM + существующего event sink; для affiliate/payout infrastructure сравнение уже другое.
+
+**Integration cost.** Managed Cloud: низкий–средний для links/conversion events, средний для partners/webhooks. Self-host: высокий из-за open-core boundaries и многосервисной operational surface.
+
+**Reversibility.** Средне-высокая, если canonical UTMs, conversion IDs и business outcomes остаются в application DB, а Dub — replaceable attribution sink. Низкая, если partner contracts, payouts, short-link namespace и attribution history становятся единственным vendor-owned source of truth.
+
+**Known limitations.** Нет tagged releases; AGPL + commercial `/ee`; hosted retention зависит от plan; attribution — probabilistic/business logic, а не доказательство causal ROI; self-hosting не означает автоматически минимальную инфраструктуру или нулевой telemetry/egress.
+
+**Production-readiness — собственная оценка:** **4/5 для managed Dub как bounded attribution/partner service после privacy/webhook review; 2.5–3/5 для self-host**, пока нет собственного exact-commit release process, upgrade rehearsal и ясного inventory внешних dependencies.
+
+**Validation plan — 60–90 минут:** создать synthetic workspace/domain и 3 links; отправить только псевдонимный conversion ID; проверить redirect latency, UTM preservation и duplicate conversion behavior; подписать/повторить webhook и убедиться в idempotency; сверить один conversion с текущим analytics sink; проверить export/delete/disable path. Для self-host — pin exact commit, проверить egress/dependencies, Redis outage/failover, backup/restore и юридическую границу AGPL core vs `/ee`.
+
+**Красные флаги:** production на floating `main`; PII/secrets в query parameters; attribution принимается за causal ROI без holdout/validation; webhook без signature/replay/idempotency controls; AGPL core ошибочно описан как permissive; self-host option продаётся внутренне как «zero vendor» без dependency inventory; business events существуют только в Dub и не экспортируются.
+
+Репозиторий: https://github.com/dubinc/dub
+
+### Watchlist
+
+- [`openai/codex`](https://github.com/openai/codex) — per-tool MCP output budgets, approval evidence across compaction и cloud-task credential redirects.
+- [`pydantic/pydantic-ai`](https://github.com/pydantic/pydantic-ai) — eval-query correctness и durable lifecycle after 2.37.0.
+- [`dgtlmoon/changedetection.io`](https://github.com/dgtlmoon/changedetection.io) — self-hostable competitive/content monitoring; оценивать как discovery/monitoring primitive, а не как source of truth.
+
+### Topic для разведки
+
+**Attribution data as agent input:** если AI-агент использует clicks/conversions/affiliate outcomes для marketing decisions, source campaign, consent/data class, attribution window и uncertainty должны оставаться видимыми. `Attributed conversion` не равно `causal lift` и не должно автоматически разрешать перераспределение бюджета без отдельной policy/experiment evidence.
 
 ## 2026-08-31
 
