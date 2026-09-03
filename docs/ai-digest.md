@@ -2,7 +2,7 @@
 title: "Ежедневный прикладной ИИ-дайджест"
 type: doc
 created: 2026-08-29
-updated: 2026-09-01
+updated: 2026-09-03
 managed: true
 mirror:
   canonical_repository: "iGeezmo/0dai"
@@ -16,6 +16,142 @@ mirror:
 Новые выпуски хранятся как отдельные файлы в `docs/ai-digest-entries/` и автоматически собираются в этот документ. Полный исторический архив до начала зеркала остаётся в каноническом приватном документе `iGeezmo/0dai/docs/ai-digest.md`.
 
 <!-- DAILY_ENTRIES -->
+
+## 2026-09-03
+
+### Вывод дня
+
+После проверки обновлений с последнего сохранённого выпуска порог прошли шесть сигналов. Главная тема — перенос доверия из неявного контекста в явные границы: approval должен быть привязан к конкретному аккаунту и tool identity, self-hosted execution не означает on-prem agent loop, AI-review может стать частью merge policy только с узким scope, а новые модели меняют не только качество, но и API/retention/cost contracts. Отдельного крупного design-only релиза сильнее этих изменений не найдено; для дизайна и маркетинга наиболее практичен новый agentic video-processing path Gemini.
+
+### 1. Codex 0.153.0 привязал remembered MCP approvals к выбранному app account и открыл remote marketplaces в plugin CLI
+
+3 сентября OpenAI выпустила Codex CLI `0.153.0`. Два изменения особенно важны для governance. Во-первых, remembered session approval для app/MCP tool теперь включает `link_id`: одобрение того же connector/tool под аккаунтом A не должно автоматически действовать для аккаунта B или вызова без selector. Во-вторых, `codex plugin` теперь умеет листать, устанавливать и удалять plugins из remote marketplaces; в JSON listing передаются source, version, install policy и auth policy. В соседнем hardening той же release-линии source restrictions применяются к curated Git marketplaces, а remote/local plugin identity обрабатывается отдельно.
+
+**Практическое применение:** approval cache нужно ключевать как минимум по `executor + server/app + tool + selected account/link + capability/policy epoch`, а не по имени tool. Для remote marketplace полезно сохранять source provenance, resolved plugin identity/version и policy decision в receipt, но не credentials. Такой контракт особенно важен для control planes, где один агент может работать с несколькими Gmail/GitHub/CRM/account links.
+
+**Риск и ограничения:** Codex-native remembered approval остаётся executor-owned state и не является бизнес-авторизацией приложения. Remote marketplace расширяет supply-chain surface: remote catalog может измениться, install policy может разрешать больше, чем ожидает внешний governance layer. Fast release cadence требует exact pin и canary.
+
+**Сильный контраргумент:** самый простой безопасный путь — вообще отключить remembered approvals и remote marketplaces, использовать только локально pinned plugins и собственный authorization broker. Для high-risk workflows это сильная альтернатива; новая capability полезна там, где multi-account UX и catalog sharing действительно снижают операционную стоимость.
+
+**Кому полезно:** builders coding-agent platforms, MCP/app integrations, AppSec, enterprise developer platforms и multi-account automation.
+
+Источники: [Codex 0.153.0](https://github.com/openai/codex/releases/tag/rust-v0.153.0), [account-scoped approval commit](https://github.com/openai/codex/commit/2393b5c9208aab4233cf5e9b1c57d1a17425bef6), [remote marketplace CLI commit](https://github.com/openai/codex/commit/6b59cefcbb35951c197a235dc94dbe700f2fbc7c), [marketplace source-policy commit](https://github.com/openai/codex/commit/633ab199cfd724aa78013c006b27a2b3d049fc3b).
+
+### 2. Gemini 3.8 Flash вышел в GA с 1M context и временной ценой $0.75/$3.75 за MTok
+
+2 сентября Google выпустил `gemini-3.8-flash` в GA и пометил модель production-ready. Публичный contract: 1,048,576 input tokens, 65,536 output tokens, thinking levels `low`/`medium`/`high`, function calling, structured outputs, code execution, caching и preview computer use. До 31 декабря 2026 года действует introductory price `$0.75` за 1M input tokens и `$3.75` за 1M output tokens; Google указывает переход на standard pricing с 1 января 2027 года. Заявления Google о лидерстве модели на coding/agent benchmarks являются vendor claims, а не независимым доказательством для конкретной кодовой базы.
+
+**Практическое применение:** добавить модель как отдельный candidate в router для long-horizon coding, tool-heavy agents и дешёвых больших контекстов, но не менять default по одному benchmark. Нужен paired workload test на accepted outcome, tool-loop failures, latency, billed tokens и human correction. В cost models introductory и post-2026 pricing должны быть разными сценариями.
+
+**Риск и ограничения:** миграция с ранних Gemini 3 surfaces не полностью механическая: актуальная guidance требует проверить thinking controls и function-response contract; `minimal` thinking не поддерживается. Большой context создаёт соблазн отправлять больше данных вместо улучшения retrieval. Introductory price — временный экономический режим.
+
+**Сильный контраргумент:** если текущий Sonnet/Codex/Gemini 3.7 маршрут уже даёт стабильный accepted-outcome cost, переход ради более дешёвого list price создаёт regression risk. Правильный baseline — реальная стоимость завершённой задачи, а не цена миллиона токенов.
+
+**Кому полезно:** coding-agent fleets, аналитические pipelines, model routers, SaaS с большим контекстом и AI FinOps.
+
+Источники: [Gemini API release notes](https://ai.google.dev/gemini-api/docs/changelog), [Gemini 3.8 Flash guide](https://ai.google.dev/gemini-api/docs/generate-content/latest-model), [model page](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash).
+
+### 3. Cursor Self-Hosted Machines переносит tool execution в вашу сеть, но не переносит agent loop on-prem
+
+2 сентября Cursor открыл Self-Hosted Machines для Cloud Agents. Worker выполняет tools рядом с внутренними repositories/services и инициирует исходящее HTTPS-соединение; inbound connection от Cursor не требуется. Есть personal `My Machines` и team pools с динамической ёмкостью; team pools требуют Enterprise service-account API key. `stdio` MCP запускается на worker, тогда как hosted HTTP MCP URL по-прежнему достигается Cursor backend.
+
+**Практическое применение:** это хороший вариант для private monorepos, custom build hardware, GPU, macOS/Linux-specific pipelines и internal services, которые трудно безопасно выставлять наружу. Worker следует помещать в отдельный low-privilege execution segment с short-lived credentials, egress policy и disposable workspace.
+
+**Риск и ограничения:** название легко прочитать слишком широко. Это **не on-prem Cursor**: agent orchestration остаётся у Cursor, worker сообщает результаты обратно. Следовательно, code/tool outputs и instruction context всё равно требуют data-flow review. Доступ worker к внутренней сети может увеличить blast radius по сравнению с полностью изолированным managed sandbox.
+
+**Сильный контраргумент:** self-hosted CI runner/ephemeral VM + provider-neutral agent CLI легче формально аудировать и снижает vendor coupling. Cursor self-host оправдан только если Cloud Agent UX, scheduling и cross-device workflow дают измеримое преимущество.
+
+**Кому полезно:** enterprise platform engineering, AppSec, команды с закрытыми репозиториями, нестандартным железом и private network dependencies.
+
+Источники: [Cursor changelog](https://cursor.com/changelog/self-hosted-machines), [Self-Hosted Machines docs](https://cursor.com/help/ai-features/self-hosted-machines), [product article](https://cursor.com/blog/self-hosted-machines).
+
+### 4. GitHub Copilot Code Review теперь может давать approval, который считается required approval
+
+1 сентября GitHub перевёл Copilot approval из advisory signal в потенциально действующий merge-control. Каждый Copilot review содержит approval assessment, но сам assessment не влияет на merge requirements. Если администратор отдельно включает approvals, Copilot может отправить настоящий `APPROVE`, который учитывается repository required-approvals rule. Возможность выключена по умолчанию, управляется на enterprise/org/repository уровнях; repository также может ограничить file paths, которые Copilot вправе approve. Новый commit после approval снимает его так же, как human approval. Функция находится в public preview.
+
+**Практическое применение:** для low-risk generated changes, dependency metadata, docs или узких machine-generated paths можно сделать AI review частью policy и сократить reviewer latency. Рекомендуемый вариант — path allowlist + обязательные deterministic tests + human ownership для auth/payments/migrations/security-sensitive code.
+
+**Риск и ограничения:** модельный review теперь способен удовлетворить реальное merge condition; это уже authority surface, а не просто комментарий. Если path scope слишком широк или required approvals всего один, ошибка Copilot может фактически разблокировать merge. Preview semantics также могут меняться.
+
+**Сильный контраргумент:** AI-review не должен никогда считаться required approval; пусть остаётся advisory. Для критичных production repositories это наиболее консервативный и часто правильный default. Новый режим разумен только для явно классифицированных low-risk changes с независимыми deterministic gates.
+
+**Кому полезно:** engineering management, platform teams, monorepo governance, release automation и AppSec.
+
+Источник: [GitHub Changelog — Copilot code review can now approve pull requests](https://github.blog/changelog/2026-09-01-copilot-code-review-can-now-approve-pull-requests/).
+
+### 5. Claude Fable 5.1 меняет одновременно tool contract, cache economics и data-retention boundary
+
+1 сентября Anthropic выпустила `claude-fable-5-1` для long-running agentic coding, knowledge work и research. Модель имеет 1M context, 128k max output и always-on adaptive thinking. Цена — `$10` input / `$50` output за MTok; cache read снизился до `$0.25`/MTok. Для Fable 5.1 `tool_choice` типов `any` и `tool` не поддерживается и возвращает 400; Anthropic рекомендует strict tool use или structured outputs. Thinking blocks сохраняются только при replay в ту же или более новую модель и имеют дополнительные binding semantics.
+
+Критически важно: Fable 5.1 относится к Covered Models с обязательным **30-дневным retention**, поэтому Zero Data Retention недоступен без отдельного разрешения Anthropic. На Claude API данные удерживает Anthropic; при соответствующих cloud offerings retained data остаётся в среде cloud provider согласно документации платформы.
+
+**Практическое применение:** перед добавлением Fable 5.1 в model router нужны два отдельных gates: API-compatibility test tool loops и data-class policy. Для public/non-sensitive research модель может быть полезным high-end route; для confidential/ZDR workloads модель нельзя выбирать автоматически только потому, что она сильнее на vendor benchmarks.
+
+**Риск и ограничения:** стоимость output высокая; обязательный retention меняет privacy/compliance boundary; старый tool-choice код может ломаться 400. Thinking-block replay осложняет cross-model fallback.
+
+**Сильный контраргумент:** Sonnet 5 либо другой ZDR-compatible provider может дать достаточно качества с существенно меньшей стоимостью и более простой data policy. Fable имеет смысл только там, где измеримый quality gain превышает privacy, cost и migration overhead.
+
+**Кому полезно:** high-end coding/research agents, model routers, regulated platform teams и AI FinOps/privacy engineering.
+
+Источники: [Claude Platform release notes](https://platform.claude.com/docs/en/release-notes/overview), [pricing](https://platform.claude.com/docs/en/about-claude/pricing), [API and data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention).
+
+### 6. Gemini добавил agentic video understanding: модель сама выбирает, какие части длинного видео читать глубже
+
+1 сентября Google выпустил agentic video understanding для Gemini 3.7 Flash, 3.6 Flash и 3.5 Flash-Lite в Interactions и GenerateContent APIs. В отличие от static processing с заранее выбранной дискретизацией, модель динамически перемещается по timeline и запрашивает transcript, frames или audio только там, где считает это необходимым. Google заявляет до 88% меньший token usage на long-form video; это vendor claim и требует paired validation. Для коротких роликов дополнительный agentic round-trip может быть хуже по latency, поэтому static processing остаётся рациональным вариантом.
+
+**Практическое применение:** research interviews, webinar/podcast analysis, ad/creative QA, lecture analytics и long-form competitive monitoring можно сначала пропускать через agentic navigation, а затем отдельно проверять найденные timestamps/quotes. Это потенциально снижает стоимость многочасовых архивов без принудительного 1-FPS анализа всего материала.
+
+**Риск и ограничения:** selective navigation может пропустить короткий, но важный момент; fast motion и мелкий текст всё равно требуют resolution/frame strategy. Нельзя использовать результат как единственное доказательство в compliance/moderation; для promoted findings нужен timestamped replay или human check.
+
+**Сильный контраргумент:** deterministic preprocessing — transcript + fixed scene detection + embeddings — воспроизводимее и проще аудируется. Для legal/compliance и короткого контента это сильная альтернатива; agentic path особенно интересен, когда архив длинный, вопрос меняется, а полный static ingestion дорог.
+
+**Кому полезно:** marketing/content analytics, user research, education, media monitoring и multimodal product teams.
+
+Источники: [Gemini API release notes](https://ai.google.dev/gemini-api/docs/changelog), [Video understanding guide](https://ai.google.dev/gemini-api/docs/video-understanding).
+
+## GitHub Radar
+
+`@GitHubRadar` использован как discovery-source, а не как evidence. Канал допускает платные размещения, поэтому публикация, просмотры, реакции и stars не влияют на promotion score. Ни один сегодняшний кандидат из discovery-feed не был повышен без независимой проверки первоисточников.
+
+### Репозиторий периода: `openai/codex`
+
+**Release/commits:** текущий stable — `0.153.0`, опубликованный 3 сентября. В release вошли account-scoped app/MCP approvals и remote-marketplace plugin CLI; `main` продолжает меняться после tag, поэтому production baseline должен быть exact tag, а не floating branch.
+
+**Лицензия:** Apache-2.0; коммерческое использование и модификация разрешены в рамках условий лицензии.
+
+**Документация и install surface:** standalone installers для macOS/Linux/Windows, npm `@openai/codex`, Homebrew и release binaries; ChatGPT sign-in или API-key auth. Дополнительная поверхность включает MCP, apps, plugins/marketplaces, app-server, IDE и remote/session capabilities.
+
+**CI/tests:** repository имеет blocking CI, Bazel workflow, `cargo-deny`, post-merge CI, platform/build-specific workflows и многочисленные targeted regression tests. Это сильный maintenance signal, но application-level permission/account fixtures всё равно обязательны.
+
+**Issue activity:** tracker очень активен. Свежие пользовательские reports включают remote-mode project identity, cross-thread delegation и custom-provider connectivity. Эти issues следует считать canary/discovery evidence до воспроизведения на exact version/OS, а не подтверждёнными universal defects.
+
+**Security model:** официальный disclosure идёт через Bugcrowd; runtime boundary состоит из sandbox, approvals, network controls и project trust. `0.153.0` улучшает account identity для remembered approvals, но capability authorization и irreversible business writes по-прежнему должны проверяться приложением/server-side policy.
+
+**Telemetry/data handling:** в repository есть OpenTelemetry/session telemetry и конфигурация `log_user_prompts`. Поэтому telemetry — отдельный outbound data surface: перед rollout нужно проверить exporter, prompt capture, identity metadata и retention. Нельзя автоматически выводить ни «всё отправляется», ни «ничего не отправляется» только из наличия OTel кода.
+
+**Integration cost:** низкий для pinned bounded CLI/`codex exec`; средний для MCP/apps/plugins/session lifecycle; высокий, если Codex session/approval/plugin state становится canonical governance database.
+
+**Reversibility:** высокая при thin adapter, repository-owned policy и внешнем receipt ledger; ниже, если native app-link IDs, marketplace state и session approvals проникают в domain model.
+
+**Known limitations:** очень быстрый release cadence; platform/auth-mode differences; dynamic marketplace supply-chain; multi-account approval semantics требуют canary; local/session telemetry и history требуют retention review.
+
+**Production-readiness — собственная оценка:** **4/5** для pinned `0.153.0` в bounded workflows с external policy/receipts; **3/5** для remote marketplace + multi-account apps до account/provenance fixtures; **2/5** для broad Full Access с dynamic plugins и native session state как единственным audit/authorization source.
+
+**Validation plan — 90 минут:** pin `0.153.0` в disposable repo. Подключить два synthetic app links к одному MCP tool: approve под A, затем вызвать под B и без selector — повторный approval обязателен; вернуть A и проверить только допустимую continuity. Подключить один controlled remote marketplace, выполнить list/install/remove и записать resolved source/version/policy; неразрешённый source должен fail closed внешней policy. После compaction/restart/fork проверить, что remembered approval не пересекает account/policy epoch. Прогнать denied outside-root/network fixtures и synthetic-secret fixture. Проверить local history/OTel sink на fixture secret и выключить prompt capture. Наконец отключить apps/plugins и убедиться, что базовый CLI adapter продолжает работать.
+
+**Красные флаги:** floating `main`/alpha; approval key без account/link identity; remote marketplace без allowlist/provenance/version evidence; Full Access трактуется как достаточный authorization; user prompts/secrets попадают в telemetry без review; GitHub issue принимается за подтверждённый defect без repro; Codex session state становится canonical business ledger.
+
+Репозиторий: https://github.com/openai/codex
+
+### Watchlist
+
+- [`microsoft/agent-host-protocol`](https://github.com/microsoft/agent-host-protocol) — session interoperability между harnesses; дождаться более стабильного protocol contract и отдельно держать authority layer.
+- [`modelcontextprotocol/modelcontextprotocol`](https://github.com/modelcontextprotocol/modelcontextprotocol) — следить за workload identity, discovery и conformance, а не только за заявленной поддержкой revision date.
+- [`anthropics/claude-code`](https://github.com/anthropics/claude-code) — быстрые изменения sandbox/credential/session boundaries полезны как cross-executor comparison для governance contracts.
+
+### Topic для разведки
+
+**Approval identity + plugin provenance:** reusable approval должен быть функцией `tool/server + selected account/link + capability snapshot + policy epoch`, а installable agent capability — иметь immutable source/version provenance и явный exit path. Удобный UI cache без этих измерений превращается в скрытую authorization и supply-chain boundary.
 
 ## 2026-09-01
 
