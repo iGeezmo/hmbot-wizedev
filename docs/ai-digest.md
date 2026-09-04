@@ -2,7 +2,7 @@
 title: "Ежедневный прикладной ИИ-дайджест"
 type: doc
 created: 2026-08-29
-updated: 2026-09-03
+updated: 2026-09-04
 managed: true
 mirror:
   canonical_repository: "iGeezmo/0dai"
@@ -16,6 +16,112 @@ mirror:
 Новые выпуски хранятся как отдельные файлы в `docs/ai-digest-entries/` и автоматически собираются в этот документ. Полный исторический архив до начала зеркала остаётся в каноническом приватном документе `iGeezmo/0dai/docs/ai-digest.md`.
 
 <!-- DAILY_ENTRIES -->
+
+## 2026-09-04
+
+### Вывод дня
+
+Порог выпуска прошли четыре сигнала. Самый крупный — GPT-6 Astra: важны не benchmark claims поставщика, а новый execution contract для долгих agent workflows — асинхронные tool calls, mid-turn steering и изменение reasoning effort без разрушения cached prefix. Второй сигнал — стабильный Gemini CLI 0.58.0 с security-relevant изменениями sandbox/path/policy semantics. Для дизайна и маркетинга Google открыл Lyria 3.5 API preview для коротких музыкальных клипов и полноценных песен. GitHub одновременно дал точный месячный migration window для ещё четырёх Copilot model IDs. Повторные сигналы из выпуска 3 сентября — Gemini 3.8 Flash, Cursor Self-Hosted Machines, Copilot content exclusions/default-model policy, Claude Fable 5.1, Copilot approvals, agentic video understanding и sandbox-containment lessons — сознательно не дублируются.
+
+### 1. GPT-6 Astra меняет execution contract долгоживущих агентов
+
+**Что изменилось и дата.** OpenAI представила GPT-6 Astra **3 сентября 2026 года**. Для API модель имеет ID `gpt-6-astra`; доступ сначала разворачивается для организаций Trusted Access Program, более широкий API/Plus/Pro/Business/Enterprise доступ заявлен на ближайшие дни. В Responses API появились три практически важные возможности: `async: true` на function/custom tools позволяет модели продолжать независимое reasoning и другие tool calls, пока приложение выполняет долгую операцию; mid-turn steering позволяет прислать новое пользовательское требование во время выполняющегося WebSocket turn с сохранением уже завершённой работы; `configuration_update` меняет reasoning effort между шагами без переписывания исходного prompt prefix и тем самым сохраняет cacheability. Tool calling для Astra требует Responses API; Chat Completions поддерживается, но не является tool-calling path. Astra также не поддерживает `none` reasoning, а Fast mode недоступен с EU data residency.
+
+**Практическое применение.** Для research/coding/analytics agents можно убрать искусственное последовательное ожидание независимых I/O operations. Но runtime должен явно хранить `call_id`, pending-tool state, causal ordering и idempotency: результат асинхронного tool не должен случайно примениться к уже отменённому или переориентированному turn. Mid-turn steering следует моделировать как versioned requirement update, а не как новый независимый prompt. `configuration_update` позволяет поднимать effort только для сложного участка workflow и снижать его для рутинного продолжения, не платя повторно за полный stable prefix.
+
+**Риск и ограничения.** Более сильный agent model повышает цену слишком широких capabilities. OpenAI в собственной safety assessment классифицирует Astra как первый широко развёрнутый модельный класс, достигший уровня **Critical** по cybersecurity capability; это vendor safety classification, а не независимая сертификация. Для production это аргумент не в пользу большего доверия, а в пользу более узких tool/network/credential boundaries, независимой server-side authorization и disposable execution. Асинхронные tools добавляют races, late results и cancellation complexity. Кроме того, list price высок: `$10/1M` input и `$50/1M` output; при input свыше 272K весь request получает long-context multipliers. Vendor claims о лучшем outcome-cost требуют проверки на собственном workload.
+
+**Сильный контраргумент.** Если приложение уже имеет детерминированный workflow engine, а agent используется только для bounded synchronous steps, async tools и mid-turn steering могут увеличить state complexity без измеримого выигрыша. В таком случае GPT-5.6 Terra/Sol или другой более дешёвый pinned model может оставаться рациональнее.
+
+**Кому полезно.** Agent-platform builders, coding/research automation, complex analytics, computer-use systems и команды, где tool latency или изменение требований во время long-running turn являются реальным bottleneck.
+
+Источники: [OpenAI — GPT-6 Astra](https://openai.com/index/gpt-6-astra/), [model guidance](https://developers.openai.com/api/docs/guides/latest-model), [model page and pricing](https://developers.openai.com/api/docs/models/gpt-6-astra), [OpenAI safety overview](https://openai.com/index/safety-overview-gpt-6-astra/).
+
+### 2. Gemini CLI 0.58.0 укрепил sandbox/path boundary — это security floor, а не обычный patch
+
+**Что изменилось и дата.** Google выпустила stable `gemini-cli v0.58.0` **1 сентября 2026 года**. Релиз делает symlink evaluation в ignore-path handling согласованной, изолирует Docker/container-runtime sockets и binaries в macOS Seatbelt sandbox, добавляет top-level safety checkers в write-policy configuration и исправляет history rollback/retry и stale cancellation state. Эти изменения меняют effective execution boundary и поэтому проходят фильтр выпуска несмотря на небольшой номер версии.
+
+**Практическое применение.** Для команд, где Gemini CLI имеет shell/write access, нужен pinned canary на `0.58.0`: ignored path через symlink не должен давать неожиданный доступ; на macOS sandboxed run не должен получать доступ к Docker/container runtime только потому, что socket или binary доступны пользователю; write policy должна fail closed на запрещённом synthetic fixture. Версию лучше считать capability-specific minimum для этих сценариев, а не автоматически обновлять весь fleet на floating `latest`.
+
+**Риск и ограничения.** Patch не превращает CLI в полноценную VM isolation. Effective boundary по-прежнему зависит от ОС, sandbox mode, разрешённых paths/network/tools и credentials процесса. В активном tracker на 4 сентября остаётся security-labeled работа по Auto Memory: maintainers описывают, что transcript excerpts могут попасть в model context **до deterministic secret redaction** и что debug logs способны содержать memory/pending-patch details. Это открытый issue, а не подтверждённый advisory, но для privacy-sensitive repositories Auto Memory нельзя считать безопасным только на основании prompt-level redaction. Текущий preview 0.59 содержит дополнительные MCP/restricted-mode hardening changes; preview не следует использовать как production floor вместо stable без отдельного canary.
+
+**Сильный контраргумент.** Disposable container/VM с short-lived credentials и внешним egress policy сильнее любой серии клиентских sandbox fixes. Это верно; Gemini CLI hardening стоит считать defense-in-depth внутри более крупного execution boundary, а не заменой этой границы.
+
+**Кому полезно.** Coding-agent fleets, platform/AppSec, teams with Docker/build tooling, MCP integrations и проекты, где CLI видит чувствительный source/context.
+
+Источники: [Gemini CLI v0.58.0](https://github.com/google-gemini/gemini-cli/releases/tag/v0.58.0), [repository](https://github.com/google-gemini/gemini-cli), [security policy](https://github.com/google-gemini/gemini-cli/blob/main/SECURITY.md), [Auto Memory redaction issue #26525](https://github.com/google-gemini/gemini-cli/issues/26525).
+
+### 3. Lyria 3.5 открыла API-путь от visual brief к music asset
+
+**Что изменилось и дата.** **3 сентября 2026 года** Google выпустила в Gemini API public preview двух моделей: `lyria-3.5-clip-preview` для 30-секундных clips/loops/rapid experiments и `lyria-3.5-pro-preview` для full-song generation. Обе принимают text и image inputs и возвращают 44.1 kHz stereo audio; model pages также описывают MP3 + lyrics text output. Google заявляет для Pro улучшенную musical coherence, natural vocals и fine-grained structural control — это vendor claims, которые сегодня независимо не подтверждались.
+
+**Практическое применение.** Для marketing/design production появляется дешёвый экспериментальный контур `visual moodboard or key art -> music draft -> human review -> selected asset`. Clip стоит `$0.04` за request, Pro — `$0.08`; это делает массовый creative ideation экономически дешёвым на inference уровне. Полезные use cases — social loops, sonic sketches к рекламе, быстрые варианты для storyboard/prototype и локализованные creative experiments. Генерируемый asset и prompt/version metadata стоит сохранять отдельно от campaign approval, чтобы preview-model change не ломал воспроизводимость.
+
+**Риск и ограничения.** Это preview: Google прямо предупреждает, что модели могут измениться до stable и иметь более строгие rate limits. Batch, Flex, Priority, function calling, structured outputs и Live API не поддерживаются. Низкая стоимость генерации не равна низкой стоимости production: brand/legal review, музыкальные права, moderation, монтаж и human QA могут доминировать. Для paid tier Google pricing page указывает, что customer data не используется для улучшения продуктов; условия конкретного коммерческого использования generated audio всё равно надо сверять с применимыми platform terms, а не выводить из цены API.
+
+**Сильный контраргумент.** Для финального брендового ролика библиотека с заранее лицензированными треками или работа с композитором может быть предсказуемее по правам, редактируемости и stems. Lyria 3.5 сейчас рациональнее как ideation/pilot surface, а не как безусловный default production-audio pipeline.
+
+**Кому полезно.** Creative/performance marketing, social teams, motion/design prototyping, агентствам и продуктам, где музыка генерируется как часть вариативного content workflow.
+
+Источники: [Gemini API release notes](https://ai.google.dev/gemini-api/docs/changelog), [Lyria 3.5 Clip](https://ai.google.dev/gemini-api/docs/models/lyria-3.5-clip-preview), [Lyria 3.5 Pro](https://ai.google.dev/gemini-api/docs/models/lyria-3.5-pro-preview), [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing), [deprecation schedule](https://ai.google.dev/gemini-api/docs/deprecations).
+
+### 4. GitHub дал один месяц на миграцию ещё четырёх Copilot model IDs
+
+**Что изменилось и дата.** GitHub объявила **3 сентября 2026 года**, что **2 октября 2026 года** во всех Copilot experiences будут отключены `Gemini 3.5 Flash`, `Gemini 3.6 Flash`, `Kimi K2.7 Code` и `Claude Opus 4.7`. Рекомендованные направления: Gemini 3.8 Flash, Kimi K3 и Claude Opus 5. Business/Enterprise administrators могут отдельно должны включить replacement model в model policy до cutoff.
+
+**Практическое применение.** Repository/config inventory должен искать не только hardcoded IDs, но и model-specific prompts/evals, managed settings, team defaults и documentation. Миграционный тест — 5–20 representative tasks на old/new model с accepted outcome, tool behavior, latency и фактическим credit/cost footprint. Если организация использует централизованный model registry, `retire_at` и replacement policy должны стать machine-readable и проверяться до dispatch.
+
+**Риск и ограничения.** Автоматический model selection способен скрыть migration, но не гарантирует эквивалентность reasoning/tool behavior или стоимости. В Enterprise замена может быть недоступна, пока admin policy её не разрешит. С другой стороны, месяц — достаточный срок для маленькой команды, если нет model-specific workflows; создавать большой migration project без inventory было бы избыточно.
+
+**Сильный контраргумент.** Для Copilot Business/Enterprise есть LTS-модель GPT-5.3-Codex с гарантированным окном доступности до 4 февраля 2027 года. Если главная цель — стабильность и снижение churn, стандартизация части workflows на LTS может быть рациональнее постоянной гонки за newest-model picker.
+
+**Кому полезно.** Copilot admins, platform teams, teams with reproducible coding-agent evals и организации, которые управляют моделями через policy-as-code.
+
+Источник: [GitHub Changelog — upcoming deprecations](https://github.blog/changelog/2026-09-03-upcoming-deprecation-of-selected-github-copilot-models/), [GPT-5.3-Codex LTS](https://github.blog/changelog/2026-03-18-gpt-5-3-codex-long-term-support-in-github-copilot/).
+
+## GitHub Radar
+
+### Репозиторий периода: `google-gemini/gemini-cli`
+
+`@GitHubRadar` использован только для discovery: публичный preview канала прямо сообщает, что размещения платные. В текущей выборке преобладают general-purpose OSS (changedetection.io, Dub, AudioKit, LazyVim, server monitoring и другие), плюс присутствует явная коммерческая реклама. Ни один Telegram-кандидат не прошёл сегодняшний AI-specific promotion gate; репозиторий периода выбран независимо по первичным GitHub-источникам.
+
+**Текущий релиз и активность.** Latest stable — `v0.58.0` от 1 сентября. Репозиторий остаётся очень активным: 4 сентября в tracker уже идут fixes вокруг shell-confirmation retries и security/privacy work по Auto Memory. Stable, preview и nightly являются разными channels; production baseline нужно pin-ить на stable/exact version, а preview использовать только как canary.
+
+**Лицензия.** Apache License 2.0, то есть коммерческое использование и модификация core разрешены при соблюдении условий лицензии.
+
+**Документация и install surface.** Официальный README поддерживает `npx`, npm global install, Homebrew и другие package-manager paths; CLI умеет file/shell/web tools, Google Search grounding, MCP, GitHub Actions и несколько способов auth. Это делает install простым, но effective capability surface широким — особенно при shell, MCP, Docker и workspace write access.
+
+**CI/tests.** Репозиторий имеет отдельные CI, chained E2E, eval/eval-nightly, deflake, documentation и platform/build workflows. Это сильный maintenance signal, но не заменяет application fixtures на конкретной ОС и конкретной policy configuration.
+
+**Issue activity.** Tracker активно обслуживается. Особенно важен открытый security-labeled issue #26525: Auto Memory может отправлять части локального transcript modelу до deterministic redaction и логировать memory/pending details. Это issue evidence, не security advisory, поэтому его нельзя рекламировать как подтверждённую vulnerability; но это достаточный аргумент не включать Auto Memory для чувствительных данных до отдельной проверки.
+
+**Security model.** Vulnerabilities принимаются через Google vulnerability intake (`g.co/vulnz`) с coordinated disclosure через GitHub advisories. Сам CLI не является authorization server: sandbox/write policy ограничивают execution, а реальное право на destructive external action должно оставаться у application/service boundary. Stable 0.58 усиливает symlink и macOS container-runtime boundaries, но broad user credentials/network всё равно определяют blast radius.
+
+**Telemetry/data handling.** Built-in observability основана на OpenTelemetry. Telemetry и traces по умолчанию выключены. Важная тонкость: если telemetry включить, `logPrompts` в конфигурации по умолчанию равен `true`; для source/privacy-sensitive use его следует явно выставлять `false` и проверять local OTLP sink synthetic-secret fixture. Экспорт возможен в local/OTLP/GCP backends.
+
+**Integration cost.** Низкий для pinned CLI canary, средний для managed MCP/policy/telemetry/session integration, высокий если Gemini-specific session/memory state становится доменной моделью orchestration platform.
+
+**Reversibility.** Высокая, если CLI остаётся сменяемым executor за repository-owned policy/receipts и собственным task state. Ниже, если workflows начинают зависеть от Gemini-specific memory, commands и local session formats.
+
+**Известные ограничения.** Security semantics platform-specific; stable 0.58 не содержит всех fixes, уже появляющихся в preview; Auto Memory privacy boundary имеет открытый hardening item; model/provider behavior и quotas не являются частью Apache-licensed CLI contract; sandbox не делает broad credentials безопасными.
+
+**Production-readiness — собственная оценка:** **4/5** для pinned `v0.58.0` в bounded developer workflows с узким write/network/MCP surface и telemetry off/redacted; **3/5** для unattended workflows и memory-heavy use до собственного privacy/security canary.
+
+**Validation plan — 75 минут:** pin `v0.58.0`; на disposable repo проверить ignored-path symlink, указывающий за workspace; на macOS проверить, что Seatbelt sandbox не получает container-runtime socket/binary access без явного разрешения; прогнать allowed write и denied outside-root write через safety policy; подключить один read-only MCP server и один запрещённый write fixture; убедиться, что telemetry действительно отсутствует по умолчанию, затем направить её в local OTLP с `logPrompts=false` и synthetic secret; проверить rollback/resume; Auto Memory на чувствительном fixture не включать до доказательства deterministic pre-model redaction; после теста удалить Gemini adapter и подтвердить, что canonical project state не менялся.
+
+**Красные флаги:** floating `@preview`/nightly в production; telemetry включена с `logPrompts=true`; Auto Memory работает по чувствительным transcripts без pre-model scrub test; broad Docker/socket/network access; symlink/path fixtures отсутствуют; MCP server считается доверенным только потому, что подключён; CLI approval трактуется как server-side authorization.
+
+Репозиторий: https://github.com/google-gemini/gemini-cli
+
+### Watchlist
+
+- [`openai/codex`](https://github.com/openai/codex) — сравнивать session/tool safety и новые Astra execution semantics с provider-neutral governance contract.
+- [`anthropics/claude-code`](https://github.com/anthropics/claude-code) — sandbox/hooks/credential boundaries и cross-executor conformance.
+- [`modelcontextprotocol/modelcontextprotocol`](https://github.com/modelcontextprotocol/modelcontextprotocol) — MCP capability/security evolution как общий слой между executors.
+
+### Topic для разведки
+
+**Pre-model data minimization.** Memory extraction, tool-result transformation и telemetry redaction должны удалять secrets/sensitive content **до** того, как payload попал в model context или внешний sink. Prompt-инструкция «не раскрывай секреты» после ingestion не является privacy boundary.
 
 ## 2026-09-03
 
